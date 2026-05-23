@@ -1,7 +1,7 @@
 // Audio samples - auto-generated from WAV
 // Source: C:\Users\COMPUMAX\Documents\led_pwm.worktrees\agents-mp3-pwm-sending-lm386n\src\wav\sfx-animal-sheep.wav
-// Framerate: 22050 Hz, Channels: 1
-// Duration: 0.97 seconds
+// Original rate: 22050 Hz -> Resampled: 22050 Hz
+// Duration: 0.975 seconds
 
 #include <stdint.h>
 

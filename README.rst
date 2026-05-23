@@ -32,3 +32,18 @@ The LEDs must be correctly described in the DTS: the compatible property of the
 device node must match "pwm-leds". And for each LED, a child node must be
 defined and the PWM configuration must be provided through a "pwms" phandle's
 node.
+
+
+fix_audio.py
+
+PS C:\Users\COMPUMAX\Documents\led_pwm.worktrees\agents-mp3-pwm-sending-lm386n> python fix_audio.py
+Leyendo WAV...
+Canales: 1
+Sample width: 2
+Framerate: 22050 Hz
+Frames: 21494
+Muestras mono: 21494
+Rango original: -24315 a 17137
+Sin resample necesario
+Rango 8-bit: 0 a 255
+Duración final: 0.975 s
