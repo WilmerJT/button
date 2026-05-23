@@ -4,6 +4,7 @@ import struct
 
 wav_file = r'C:\Users\COMPUMAX\Documents\led_pwm.worktrees\agents-mp3-pwm-sending-lm386n\src\wav\sfx-animal-sheep.wav'
 output_file = r'C:\Users\COMPUMAX\Documents\led_pwm.worktrees\agents-mp3-pwm-sending-lm386n\src\audio_data.h'
+TARGET_SAMPLE_RATE = 22050  # Frecuencia de muestreo deseada
 
 print("Leyendo WAV...")
 with wave.open(wav_file, 'rb') as wav:
@@ -33,6 +34,13 @@ else:
 print(f"Muestras mono: {len(mono)}")
 print(f"Rango: {min(mono)} a {max(mono)}")
 
+# Downsample a 22050 Hz si es necesario
+downsample_factor = params.framerate // TARGET_SAMPLE_RATE
+if downsample_factor > 1:
+    mono = mono[::downsample_factor]
+    print(f"Downsample: factor {downsample_factor} → {TARGET_SAMPLE_RATE} Hz")
+    print(f"Muestras después de downsample: {len(mono)}")
+
 # Normalizar a 8-bit (0-255) para PWM
 # Rango de -32768 a +32767 → 0 a 255
 min_val = min(mono)
@@ -49,8 +57,8 @@ print(f"Rango 8-bit: {min(samples_8bit)} a {max(samples_8bit)}")
 # Generar código C
 c_code = f'''// Audio samples - auto-generated from WAV
 // Source: {wav_file}
-// Framerate: {params.framerate} Hz, Channels: {params.nchannels}
-// Duration: {len(samples_8bit) / params.framerate:.2f} seconds
+// Framerate: {TARGET_SAMPLE_RATE} Hz, Channels: {params.nchannels}
+// Duration: {len(samples_8bit) / TARGET_SAMPLE_RATE:.2f} seconds
 
 #include <stdint.h>
 
@@ -69,7 +77,7 @@ c_code += f'''
 }};
 
 const uint32_t audio_samples_len = {len(samples_8bit)};
-const uint32_t audio_sample_rate = {params.framerate};
+const uint32_t audio_sample_rate = {TARGET_SAMPLE_RATE};
 '''
 
 # Guardar
@@ -78,5 +86,5 @@ with open(output_file, 'w') as f:
 
 print(f"\n✓ Guardado en: {output_file}")
 print(f"  Muestras: {len(samples_8bit)}")
-print(f"  Duración: {len(samples_8bit) / params.framerate:.2f}s")
+print(f"  Duración: {len(samples_8bit) / TARGET_SAMPLE_RATE:.2f}s")
 print(f"  Tamaño: {len(samples_8bit)} bytes")
