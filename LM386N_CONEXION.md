@@ -1,53 +1,132 @@
 # Conexión LM386N con nRF5340 - PWM a Audio
+## ⭐ MODIFICADO: Aumentar Ganancia del S8050
 
-## Esquema de Conexión
+## Esquema de Conexión (OPTIMIZADO para MÁXIMO VOLUMEN)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      nRF5340 DK                             │
-│                                                             │
-│  P1.11 (PWM) ────────────┐                                 │
-│                          │                                 │
-└──────────────────────────┼─────────────────────────────────┘
-                           │
-                    [Filtro RC]
-                    10kΩ resistor
-                           │
-                    ┌──────┴──────┐
-                    │             │
-                   (R)           (C)
-                    │        10µF cap
-                    │             │
-                    │            GND
-                    │
-            ┌───────┴────────┐
-            │                │
-         [10µF cap]         │
-            │                │
-            ├───(pin 3)──────┤  LM386N
-            │ IN+ (non-inv)  │
-            │                │
-         [100k Ω]           │  pin 1: GND
-            │                │  pin 2: IN- (100k to GND + 10µF cap)
-            │                │  pin 3: IN+ (filtered PWM)
-            GND              │  pin 4: GND
-                             │  pin 5: OUT (audio)
-                             │  pin 6: +V (4-12V)
-                             │  pin 7: GND
-                             │  pin 8: GAIN (100k between pins 1-8)
-                             │
-            ┌────────────────┤
-            │              pin 2 (IN-)
-         [100k Ω]
-            │
-           GND    ┌────────[10µF]────────┐
-                  │                      │
-                  │ (pin 5) OUT  ──────┬─┴──┐
-                  │                    │    │
-                  │              [8Ω speaker]
-                  │                    │
-               GND ────────────────────┴────┘
+┌─────────────────────────────────────────────────────────┐
+│              nRF5340 P0.4 (PWM)                         │
+└────────┬────────────────────────────────────────────────┘
+         │
+    [10kΩ] ← RESISTOR BASE REDUCIDO de 10kΩ
+         │                    ↓ CAMBIO: Usar 1-4.7kΩ para más ganancia
+         │
+    [10µF capacitor] ← Filtro RC
+         │
+         ├──────────────────┐ S8050 BJT NPN
+         │                  │
+         │          BASE ──┤| ← PWM filtrado llega aquí
+         │          COLECTOR: a LM386N
+         │          EMISOR: a GND
+         │
+     COLECTOR del S8050
+         │
+    [1-2.2kΩ] ← RESISTOR COLECTOR reducido (era 10kΩ)
+         │         ↓ CAMBIO: Menor R = más corriente
+         │
+    [1µF capacitor] ← Acople a LM386N pin 3
+         │
+    [opcional: 100kΩ a GND] ← Resistor pull-down para estabilidad
+         │
+         └──────────┬──────────────────┐  LM386N
+                    │                  │
+               (pin 3) IN+ ────────────┤
+                                       │
+                  (pin 1) GAIN- ────┤  ← GND
+                  (pin 2) IN- ───┬──┤
+                                 │  │
+                           [100kΩ]  │ pin 4: GND
+                                 │  │ pin 6: VCC (+5V)
+                                GND │ pin 5: OUT
+                                    │
+                    (pin 8) GAIN+ ──┤
+                          ↓         │
+                    [100kΩ]─(pin 1) ← Ganancia x100
+                          │
+                    (pin 5) OUT ─────[10µF cap]─────┐
+                                                     │
+                                              [8Ω Speaker]
+                                                     │
+                                                    GND
 ```
+
+
+## CAMBIOS REQUERIDOS para MÁXIMO VOLUMEN
+
+### ⚡ Modificación 1: Resistor de Base (10kΩ → 1-4.7kΩ)
+
+**Actual**: 10kΩ = baja corriente de base = ganancia reducida
+**Nuevo**: **1kΩ o 4.7kΩ** = más corriente base = S8050 más saturado = máxima ganancia
+
+**Conexión S8050**:
+```
+                PWM filtrado (P0.4)
+                       │
+                   [1-4.7kΩ] ← REDUCIR AQUÍ
+                       │
+                    ┌──│
+                    │  B (base)
+              S8050 │  E (emisor) ─ GND
+                    │  C (colector) ─ a LM386N pin 3
+                    └──│
+```
+
+**Ganancia aproximada del transistor**:
+- Con 10kΩ: Ic/Ib ≈ 20-50x (bajo)
+- Con 1kΩ: Ic/Ib ≈ 100-200x (ALTO) ← USAR ESTO
+
+---
+
+### ⚡ Modificación 2: Resistor Colector (10kΩ → 1-2.2kΩ)
+
+**Actual**: 10kΩ en colector = poca caída de voltaje = baja amplitud
+**Nuevo**: **1-2.2kΩ** = más caída = máxima amplitud en colector
+
+**Conexión**:
+```
+            +5V (VCC)
+              │
+          [1-2.2kΩ] ← RESISTOR COLECTOR
+              │
+            ┌─┴──
+            │   C (colector)
+       S8050│
+            │   E (emisor)
+            └────GND
+```
+
+---
+
+### ⚡ Modificación 3: Capacitor de Acople (opcional)
+
+Cambiar de 10µF a **1µF** para mejor respuesta de frecuencia en audio:
+```
+S8050 Colector ─[1µF capacitor]─ LM386N pin 3
+```
+
+---
+
+## 🔧 PASOS PARA MODIFICAR
+
+1. **Desconecta todo** (sin alimentación)
+2. **Reemplaza resistor base**:
+   - ✅ Si usas 1kΩ: máxima ganancia pero más consumo
+   - ✅ Si usas 4.7kΩ: ganancia media, menor consumo
+   - **Recomendación: 1kΩ**
+
+3. **Reemplaza resistor colector**:
+   - De 10kΩ a **2.2kΩ**
+
+4. **Opcional - cambia capacitor**:
+   - De 10µF a **1µF** (más agudos, menos bajos)
+
+5. **Reconecta**:
+   ```
+   P0.4 → [1kΩ resistor] → S8050 base
+   S8050 colector → [1µF cap] → LM386N pin 3
+   ```
+
+---
 
 ## Detalles de Conexión
 
