@@ -8,6 +8,7 @@
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -21,7 +22,7 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 #define PWM_PERIOD_US (1000000 / PWM_FREQ_HZ)
 #define PWM_PERIOD_CYCLES 256
 // Test helpers
-#define TEST_STATIC_PWM_MS 2000
+#define TEST_STATIC_PWM_MS 0
 #define TEST_PWM_DUTY_PERCENT 75
 #define TEST_USE_LOW_SAMPLE_RATE 0
 #define TEST_SAMPLE_RATE_HZ 8000
@@ -37,6 +38,52 @@ typedef struct {
 
 static audio_playback_t playback = {0};
 static const struct device *pwm_dev;
+
+// Button state and configuration
+static K_SEM_DEFINE(button_pressed, 0, 1);
+
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_NODELABEL(button_play), gpios);
+static struct gpio_callback button_cb_data;
+
+/*
+ * Button callback - triggered when button is pressed
+ */
+static void button_pressed_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	LOG_INF("Button pressed!");
+	k_sem_give(&button_pressed);
+}
+
+/*
+ * Initialize button for audio playback
+ */
+static int button_init(void)
+{
+	int ret;
+
+	if (!gpio_is_ready_dt(&button)) {
+		LOG_ERR("Button device %s is not ready!", button.port->name);
+		return -1;
+	}
+
+	ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
+	if (ret != 0) {
+		LOG_ERR("Failed to configure button pin: %d", ret);
+		return ret;
+	}
+
+	ret = gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE);
+	if (ret != 0) {
+		LOG_ERR("Failed to configure button interrupt: %d", ret);
+		return ret;
+	}
+
+	gpio_init_callback(&button_cb_data, button_pressed_handler, BIT(button.pin));
+	gpio_add_callback(button.port, &button_cb_data);
+
+	LOG_INF("Button initialized at %s pin %d", button.port->name, button.pin);
+	return 0;
+}
 
 /*
  * Audio timer callback - fires at sample rate frequency
@@ -167,6 +214,7 @@ int main(void)
 	LOG_INF("===== nRF5340 PWM Audio Playback =====");
 	LOG_INF("Adapted from nrf52-pwm-audio project");
 	LOG_INF("Pin: P0.4");
+	LOG_INF("Button: P0.23");
 
 	// Initialize PWM
 	if (pwm_audio_init() != 0) {
@@ -174,25 +222,25 @@ int main(void)
 		return -1;
 	}
 
-	// Wait a bit before starting playback
+	// Initialize Button
+	if (button_init() != 0) {
+		LOG_ERR("Failed to initialize Button!");
+		return -1;
+	}
+
+	// Wait a bit after initialization
 	k_sleep(K_MSEC(500));
 
-#if TEST_STATIC_PWM_MS > 0
-	// Quick static PWM test: set duty to TEST_PWM_DUTY_PERCENT for TEST_STATIC_PWM_MS ms
-	{
-		uint32_t duty = (PWM_PERIOD_CYCLES * TEST_PWM_DUTY_PERCENT) / 100;
-		LOG_INF("Static PWM test: %d%% for %d ms", TEST_PWM_DUTY_PERCENT, TEST_STATIC_PWM_MS);
-		pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, duty, PWM_POLARITY_NORMAL);
-		k_sleep(K_MSEC(TEST_STATIC_PWM_MS));
-		// restore neutral
-		pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, PWM_PERIOD_CYCLES / 2, PWM_POLARITY_NORMAL);
-	}
-#endif
+	LOG_INF("Press button to play audio...");
 
-	// Play audio in loop
+	// Play audio when button is pressed
 	while (true) {
+		// Wait for button press
+		k_sem_take(&button_pressed, K_FOREVER);
+		
+		LOG_INF("Button pressed - Starting playback");
+
 		if (audio_samples_len > 0) {
-			LOG_INF("Playing audio...");
 #if TEST_USE_LOW_SAMPLE_RATE
 			pwm_audio_play(audio_samples, audio_samples_len, TEST_SAMPLE_RATE_HZ);
 #else
@@ -204,13 +252,13 @@ int main(void)
 				k_sleep(K_MSEC(50));
 			}
 			
-			LOG_INF("Playback finished");
+			LOG_INF("Playback finished - Press button again to replay");
 		} else {
 			LOG_WRN("No audio data available!");
 		}
-
-		// Pause before next playback
-		k_sleep(K_MSEC(2000));
+		
+		// Small debounce delay
+		k_sleep(K_MSEC(100));
 	}
 
 	return 0;

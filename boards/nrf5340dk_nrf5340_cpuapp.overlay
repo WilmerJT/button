@@ -1,4 +1,16 @@
 / {
+	aliases {
+		sw0 = &button_play;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		status = "okay";
+		button_play: button_play {
+			gpios = <&gpio0 23 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Play Button";
+		};
+	};
 };
 
 &pinctrl {
