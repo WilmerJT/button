@@ -17,8 +17,14 @@ LOG_MODULE_REGISTER(main, CONFIG_LOG_DEFAULT_LEVEL);
 #include "audio_data.h"
 
 #define PWM_CHANNEL 0
-#define PWM_FREQ_HZ 20000
+#define PWM_FREQ_HZ 100000
 #define PWM_PERIOD_US (1000000 / PWM_FREQ_HZ)
+#define PWM_PERIOD_CYCLES 256
+// Test helpers
+#define TEST_STATIC_PWM_MS 2000
+#define TEST_PWM_DUTY_PERCENT 75
+#define TEST_USE_LOW_SAMPLE_RATE 0
+#define TEST_SAMPLE_RATE_HZ 8000
 
 // Audio playback state machine
 typedef struct {
@@ -41,7 +47,7 @@ static void audio_sample_callback(struct k_timer *timer)
 	if (!playback.playing || playback.index >= playback.length) {
 		playback.playing = false;
 		// Set to neutral/middle PWM (50%)
-		pwm_set(pwm_dev, PWM_CHANNEL, PWM_PERIOD_US, PWM_PERIOD_US / 2, PWM_POLARITY_NORMAL);
+		pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, PWM_PERIOD_CYCLES / 2, PWM_POLARITY_NORMAL);
 		return;
 	}
 
@@ -52,15 +58,15 @@ static void audio_sample_callback(struct k_timer *timer)
 	// 0x00 = silence (0% duty)
 	// 0x80 = neutral (50% duty) 
 	// 0xFF = maximum (100% duty)
-	uint32_t pulse_us = (sample * PWM_PERIOD_US) / 256;
+	uint32_t pulse_cycles = sample;
 	
 	// Clamp to valid range
-	if (pulse_us > PWM_PERIOD_US) {
-		pulse_us = PWM_PERIOD_US;
+	if (pulse_cycles > PWM_PERIOD_CYCLES) {
+		pulse_cycles = PWM_PERIOD_CYCLES;
 	}
 	
-	// Update PWM output
-	pwm_set(pwm_dev, PWM_CHANNEL, PWM_PERIOD_US, pulse_us, PWM_POLARITY_NORMAL);
+	// Update PWM output with 8-bit resolution
+	pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, pulse_cycles, PWM_POLARITY_NORMAL);
 	
 	playback.index++;
 }
@@ -79,7 +85,7 @@ static int pwm_audio_init(void)
 	}
 
 	// Set PWM to idle state (50% duty = silence)
-	pwm_set(pwm_dev, PWM_CHANNEL, PWM_PERIOD_US, PWM_PERIOD_US / 2, PWM_POLARITY_NORMAL);
+	pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, PWM_PERIOD_CYCLES / 2, PWM_POLARITY_NORMAL);
 	
 	LOG_INF("PWM audio initialized on P0.4");
 	LOG_INF("PWM Frequency: %d Hz", PWM_FREQ_HZ);
@@ -136,7 +142,7 @@ static void pwm_audio_stop(void)
 		playback.playing = false;
 		k_timer_stop(&audio_timer);
 		// Set to neutral (silence)
-		pwm_set(pwm_dev, PWM_CHANNEL, PWM_PERIOD_US, PWM_PERIOD_US / 2, PWM_POLARITY_NORMAL);
+		pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, PWM_PERIOD_CYCLES / 2, PWM_POLARITY_NORMAL);
 	}
 }
 
@@ -171,11 +177,27 @@ int main(void)
 	// Wait a bit before starting playback
 	k_sleep(K_MSEC(500));
 
+#if TEST_STATIC_PWM_MS > 0
+	// Quick static PWM test: set duty to TEST_PWM_DUTY_PERCENT for TEST_STATIC_PWM_MS ms
+	{
+		uint32_t duty = (PWM_PERIOD_CYCLES * TEST_PWM_DUTY_PERCENT) / 100;
+		LOG_INF("Static PWM test: %d%% for %d ms", TEST_PWM_DUTY_PERCENT, TEST_STATIC_PWM_MS);
+		pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, duty, PWM_POLARITY_NORMAL);
+		k_sleep(K_MSEC(TEST_STATIC_PWM_MS));
+		// restore neutral
+		pwm_set_cycles(pwm_dev, PWM_CHANNEL, PWM_PERIOD_CYCLES, PWM_PERIOD_CYCLES / 2, PWM_POLARITY_NORMAL);
+	}
+#endif
+
 	// Play audio in loop
 	while (true) {
 		if (audio_samples_len > 0) {
 			LOG_INF("Playing audio...");
+#if TEST_USE_LOW_SAMPLE_RATE
+			pwm_audio_play(audio_samples, audio_samples_len, TEST_SAMPLE_RATE_HZ);
+#else
 			pwm_audio_play(audio_samples, audio_samples_len, audio_sample_rate);
+#endif
 			
 			// Wait for playback to complete
 			while (pwm_audio_is_playing()) {

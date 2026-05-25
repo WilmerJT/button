@@ -4,7 +4,7 @@ import struct
 
 wav_file = r'C:\Users\COMPUMAX\Documents\led_pwm.worktrees\agents-mp3-pwm-sending-lm386n\src\wav\sfx-animal-sheep.wav'
 output_file = r'C:\Users\COMPUMAX\Documents\led_pwm.worktrees\agents-mp3-pwm-sending-lm386n\src\audio_data.h'
-TARGET_SAMPLE_RATE = 22050
+TARGET_SAMPLE_RATE = 11025
 
 print("Leyendo WAV...")
 with wave.open(wav_file, 'rb') as wav:
